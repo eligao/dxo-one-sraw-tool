@@ -1,0 +1,23 @@
+[package]
+name = "dxo-sraw-wasm"
+description = "WebAssembly bindings for dxo-sraw-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+dxo-sraw-core = { path = "../dxo-sraw-core" }
+js-sys = "0.3.106"
+wasm-bindgen = "0.2.129"
+
+[lints]
+workspace = true
+
+# 57 KB unoptimized; not worth requiring binaryen on every machine
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false

@@ -22,6 +22,18 @@ target/release/dxo-sraw split -o out/ --force /card/DCIM/*.DXO
 - `crates/dxo-sraw-core` — parser + splitter. No file I/O (bytes in, bytes out), builds for
   `wasm32-unknown-unknown`.
 - `crates/dxo-sraw` — the CLI.
+- `crates/dxo-sraw-wasm` — wasm-bindgen wrapper (`info(bytes)`, `split(bytes) -> Uint8Array[]`).
+- `web/` — Vite + React + TypeScript page: drop `.DXO` files, download the DNGs (or a zip).
+  The split runs in a Web Worker; files never leave the browser.
+
+## Web app
+
+```sh
+cd web
+pnpm install
+pnpm dev       # builds the wasm package (wasm-pack) then starts Vite
+pnpm build     # static site in web/dist/, deployable anywhere (relative paths)
+```
 
 ## File format (as observed, firmware V3.2.0)
 
