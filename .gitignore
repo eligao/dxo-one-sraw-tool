@@ -1,0 +1,15 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# sample camera files / outputs (large binaries)
+assets/*.DXO
+assets/*.JPG
+*.dng
