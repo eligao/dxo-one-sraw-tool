@@ -18,7 +18,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
@@ -26,19 +26,17 @@ jobs:
         with:
           tool: wasm-pack
       - run: cargo test --workspace
-      - uses: pnpm/action-setup@v4
+      # pnpm (version from web/package.json "packageManager") + Node.js, then
+      # `pnpm install --frozen-lockfile`
+      - uses: pnpm/setup@v3
         with:
-          version: 10
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: web/pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
-        working-directory: web
+          working-directory: web
+          runtime: node@22
+          cache: true
+          require-lockfile: true
       - run: pnpm build
         working-directory: web
-      - uses: actions/upload-pages-artifact@v4
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: web/dist
 
@@ -50,4 +48,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

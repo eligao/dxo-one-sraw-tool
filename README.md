@@ -67,3 +67,7 @@ Raw pixels are copied untouched.
 cargo test     # synthetic fixture, plus assets/DXO_0202.DXO / DXO_0203.DXO when present
 cargo clippy --all-targets && cargo fmt --check
 ```
+
+## License
+
+MIT — see [LICENSE](LICENSE).
