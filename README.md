@@ -8,6 +8,12 @@ frames can be merged in Lightroom (Photo Merge → HDR), Photoshop, or any other
 In SuperRAW mode the DxO ONE captures 4 frames at the same exposure and stores them in a
 single DNG 1.4 file. Lightroom and most other raw tools only read the first frame.
 
+References (DxO ONE Reference Manual):
+
+- [File format and managing RAW files](https://reference-dxoone.dxo.com/en/6-2-file-format-and-managing-raw-files/)
+  — what SuperRAW is, and that only DxO software merges the four frames
+- [SuperRAW tutorial](https://reference-dxoone.dxo.com/en/8-3-3-superraw/) — when to use it
+
 ## Usage
 
 ```sh
