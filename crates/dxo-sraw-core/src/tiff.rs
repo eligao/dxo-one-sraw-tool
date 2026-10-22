@@ -32,6 +32,7 @@ pub mod tag {
     pub const EXIF_IFD: u16 = 0x8769;
     pub const GPS_IFD: u16 = 0x8825;
     pub const INTEROP_IFD: u16 = 0xA005;
+    pub const MAKER_NOTE: u16 = 0x927C;
     pub const IMAGE_UNIQUE_ID: u16 = 0xA420;
     pub const DNG_VERSION: u16 = 0xC612;
     pub const RAW_DATA_UNIQUE_ID: u16 = 0xC65D;

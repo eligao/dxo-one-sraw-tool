@@ -66,8 +66,12 @@ pub struct SuperRaw<'a> {
     pub frames: Vec<Frame>,
     /// Offsets of non-raw SubIFDs (previews), in order.
     pub other_subifds: Vec<u32>,
-    /// End of the metadata header == start of the first frame's pixel data.
+    /// IFDs referenced by the output (IFD0, primary raw, previews, Exif, ...).
+    meta_ifds: Vec<Ifd>,
+    /// Start of the first frame's pixel data (end of the leading metadata).
     pub data_start: usize,
+    /// End of the last frame's pixel data (start of any trailing metadata).
+    pub tail_start: usize,
 }
 
 fn is_raw(tf: &Tiff, ifd: &Ifd) -> Result<bool, Error> {
@@ -163,47 +167,11 @@ impl<'a> SuperRaw<'a> {
             .flat_map(|f| f.data.iter().map(|&(o, _)| o))
             .min()
             .ok_or_else(|| Error::Unsupported("raw frames have no data".into()))?;
-
-        // Validate the layout assumption: all metadata lives before the pixel data.
-        let mut ifds: Vec<Ifd> = std::iter::once(ifd0.clone()).chain(subifds).collect();
-        for t in [tag::EXIF_IFD, tag::GPS_IFD] {
-            if let Some(off) = tf.get_int(ifd0, t)?.filter(|&o| o != 0) {
-                ifds.push(tf.read_ifd(off as usize)?);
-            }
-        }
-        let interop: Vec<u32> = ifds
+        let tail_start = frames
             .iter()
-            .map(|ifd| tf.get_int(ifd, tag::INTEROP_IFD))
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter()
-            .flatten()
-            .filter(|&o| o != 0)
-            .collect();
-        for off in interop {
-            ifds.push(tf.read_ifd(off as usize)?);
-        }
-        if ifd0.next_offset != 0 {
-            ifds.push(tf.read_ifd(ifd0.next_offset)?);
-        }
-
-        let raw_offsets: Vec<usize> = frames.iter().map(|f| f.ifd.offset).collect();
-        for ifd in &ifds {
-            let mut ranges = vec![ifd.span()];
-            ranges.extend(
-                ifd.entries
-                    .iter()
-                    .filter(|e| !e.is_inline())
-                    .map(|e| (e.value_pos, e.size)),
-            );
-            if !raw_offsets.contains(&ifd.offset) {
-                ranges.extend(tf.data_ranges(ifd)?); // thumbnails / previews
-            }
-            if let Some(&(pos, _)) = ranges.iter().find(|&&(pos, len)| pos + len > data_start) {
-                return Err(Error::Unsupported(format!(
-                    "metadata at {pos} lies after raw data start {data_start}"
-                )));
-            }
-        }
+            .flat_map(|f| f.data.iter().map(|&(o, n)| o + n))
+            .max()
+            .unwrap_or(data_start);
         for f in &frames {
             for &(off, n) in &f.data {
                 tf.bytes(off, n).map_err(|_| {
@@ -212,12 +180,75 @@ impl<'a> SuperRaw<'a> {
             }
         }
 
+        // Metadata IFDs that stay referenced in the output. Metadata may live before the
+        // pixel data (camera original) or after it (appended by e.g. Adobe software).
+        let mut meta_ifds = vec![ifd0.clone(), frames[0].ifd.clone()];
+        meta_ifds.extend(
+            subifds
+                .into_iter()
+                .filter(|i| other_subifds.contains(&(i.offset as u32))),
+        );
+        for t in [tag::EXIF_IFD, tag::GPS_IFD] {
+            if let Some(off) = tf.get_int(ifd0, t)?.filter(|&o| o != 0) {
+                meta_ifds.push(tf.read_ifd(off as usize)?);
+            }
+        }
+        let interop: Vec<u32> = meta_ifds
+            .iter()
+            .map(|ifd| tf.get_int(ifd, tag::INTEROP_IFD))
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .flatten()
+            .filter(|&o| o != 0)
+            .collect();
+        for off in interop {
+            meta_ifds.push(tf.read_ifd(off as usize)?);
+        }
+        if ifd0.next_offset != 0 {
+            meta_ifds.push(tf.read_ifd(ifd0.next_offset)?);
+        }
+
+        let primary_offset = frames[0].ifd.offset;
+        for ifd in &meta_ifds {
+            let mut ranges = vec![ifd.span()];
+            ranges.extend(
+                ifd.entries
+                    .iter()
+                    .filter(|e| !e.is_inline())
+                    .map(|e| (e.value_pos, e.size)),
+            );
+            if ifd.offset != primary_offset {
+                ranges.extend(tf.data_ranges(ifd)?); // thumbnails / previews
+            }
+            let in_head = |pos: usize, len: usize| pos + len <= data_start;
+            if let Some(&(pos, _)) = ranges
+                .iter()
+                .find(|&&(pos, len)| !in_head(pos, len) && pos < tail_start)
+            {
+                return Err(Error::Unsupported(format!(
+                    "metadata at {pos} lies inside the raw frame data"
+                )));
+            }
+            // MakerNote internals use absolute offsets: it must not move.
+            if let Some(mn) = ifd
+                .get(tag::MAKER_NOTE)
+                .filter(|e| !in_head(e.value_pos, e.size))
+            {
+                return Err(Error::Unsupported(format!(
+                    "MakerNote was moved by another app (now at {}); its internal offsets can't be fixed",
+                    mn.value_pos
+                )));
+            }
+        }
+
         Ok(SuperRaw {
             tiff: tf,
             subifds_entry,
             frames,
             other_subifds,
+            meta_ifds,
             data_start,
+            tail_start,
         })
     }
 
@@ -274,12 +305,67 @@ impl<'a> SuperRaw<'a> {
         Ok(out)
     }
 
-    /// Patched copy of the metadata header for `frame`.
-    pub fn build_header(&self, frame: &Frame) -> Result<Vec<u8>, Error> {
+    /// The complete DNG for `frame`:
+    /// `[leading metadata][frame pixels][trailing metadata]`, with pointers patched.
+    pub fn frame_dng(&self, frame: &Frame) -> Result<Vec<u8>, Error> {
         let tf = &self.tiff;
-        let mut hdr = tf.buf()[..self.data_start].to_vec();
+        let buf = tf.buf();
+        let new_tail = self.data_start + frame.nbytes();
+        let mut out =
+            Vec::with_capacity(self.data_start + frame.nbytes() + buf.len() - self.tail_start);
+        out.extend_from_slice(&buf[..self.data_start]);
+        for &(off, n) in &frame.data {
+            out.extend_from_slice(&buf[off..off + n]);
+        }
+        out.extend_from_slice(&buf[self.tail_start..]);
 
-        // 1) primary raw IFD -> frame's pixel data, laid out right after the header
+        // Where a byte of the original file ended up in `out` (metadata is head or tail only).
+        let moved = |p: usize| {
+            if p >= self.tail_start {
+                p - self.tail_start + new_tail
+            } else {
+                p
+            }
+        };
+        let put = |out: &mut Vec<u8>, pos: usize, bytes: &[u8]| {
+            let p = moved(pos);
+            out[p..p + bytes.len()].copy_from_slice(bytes);
+        };
+        let offset_tags = [tag::STRIP_OFFSETS, tag::TILE_OFFSETS, tag::JPEG_IF_OFFSET];
+        let pointer_tags = [tag::EXIF_IFD, tag::GPS_IFD, tag::INTEROP_IFD];
+
+        // 1) pointers into the trailing metadata shift with it
+        put(
+            &mut out,
+            4,
+            &self.pack_ints(tiff::LONG, &[moved(tf.ifd0.offset)])?,
+        );
+        for ifd in &self.meta_ifds {
+            let next_pos = ifd.offset + 2 + 12 * ifd.entries.len();
+            put(
+                &mut out,
+                next_pos,
+                &self.pack_ints(tiff::LONG, &[moved(ifd.next_offset)])?,
+            );
+            for e in &ifd.entries {
+                if !e.is_inline() {
+                    put(
+                        &mut out,
+                        e.pos + 8,
+                        &self.pack_ints(tiff::LONG, &[moved(e.value_pos)])?,
+                    );
+                }
+                let is_pointer = pointer_tags.contains(&e.tag)
+                    || (offset_tags.contains(&e.tag) && ifd.offset != self.primary().ifd.offset);
+                if is_pointer {
+                    let vals: Vec<usize> =
+                        tf.ints(e)?.into_iter().map(|v| moved(v as usize)).collect();
+                    put(&mut out, e.value_pos, &self.pack_ints(e.typ, &vals)?);
+                }
+            }
+        }
+
+        // 2) primary raw IFD -> frame's pixel data, laid out right after the leading metadata
         let (off_tag, len_tag) = data_tags(&self.primary().ifd)?;
         let mut offsets = Vec::with_capacity(frame.data.len());
         let mut pos = self.data_start;
@@ -290,51 +376,48 @@ impl<'a> SuperRaw<'a> {
         let counts: Vec<usize> = frame.data.iter().map(|&(_, n)| n).collect();
         for (t, values) in [(off_tag, &offsets), (len_tag, &counts)] {
             let entry = self.primary().ifd.get(t).expect("checked by data_tags");
-            let packed = self.pack_ints(entry.typ, values)?;
-            hdr[entry.value_pos..entry.value_pos + packed.len()].copy_from_slice(&packed);
+            put(
+                &mut out,
+                entry.value_pos,
+                &self.pack_ints(entry.typ, values)?,
+            );
         }
 
-        // 2) SubIFDs -> [primary raw, previews...]
+        // 3) SubIFDs -> [primary raw, previews...]
         let se = &self.subifds_entry;
         let new_subs: Vec<usize> = std::iter::once(self.primary().ifd.offset)
             .chain(self.other_subifds.iter().map(|&o| o as usize))
+            .map(moved)
             .collect();
-        let count = self.pack_ints(tiff::LONG, &[new_subs.len()])?;
-        hdr[se.pos + 4..se.pos + 8].copy_from_slice(&count);
+        put(
+            &mut out,
+            se.pos + 4,
+            &self.pack_ints(tiff::LONG, &[new_subs.len()])?,
+        );
         let mut packed = self.pack_ints(se.typ, &new_subs)?;
         if packed.len() <= 4 {
             // now fits inline in the entry
             packed.resize(4, 0);
-            hdr[se.pos + 8..se.pos + 12].copy_from_slice(&packed);
+            put(&mut out, se.pos + 8, &packed);
         } else {
-            hdr[se.value_pos..se.value_pos + packed.len()].copy_from_slice(&packed);
+            put(&mut out, se.value_pos, &packed);
         }
 
-        // 3) unique IDs, so DAMs don't dedupe frames against each other / the source
+        // 4) unique IDs, so DAMs don't dedupe frames against each other / the source
         if let Some(exif_off) = tf.get_int(&tf.ifd0, tag::EXIF_IFD)?.filter(|&o| o != 0) {
             let exif = tf.read_ifd(exif_off as usize)?;
             if let Some(uid) = exif.get(tag::IMAGE_UNIQUE_ID).filter(|e| e.size >= 2) {
-                let last = uid.value_pos + uid.size - 2; // char before the NUL
-                if let Some(d) = char::from(hdr[last]).to_digit(16) {
+                let last = moved(uid.value_pos + uid.size - 2); // char before the NUL
+                if let Some(d) = char::from(out[last]).to_digit(16) {
                     let x = (d ^ u32::from(frame.index)) & 0xF;
-                    hdr[last] = char::from_digit(x, 16).expect("< 16").to_ascii_uppercase() as u8;
+                    out[last] = char::from_digit(x, 16).expect("< 16").to_ascii_uppercase() as u8;
                 }
             }
         }
         if let Some(rid) = tf.ifd0.get(tag::RAW_DATA_UNIQUE_ID).filter(|e| e.size > 0) {
-            hdr[rid.value_pos + rid.size - 1] ^= frame.index;
+            out[moved(rid.value_pos + rid.size - 1)] ^= frame.index;
         }
 
-        Ok(hdr)
-    }
-
-    /// The complete DNG for `frame`.
-    pub fn frame_dng(&self, frame: &Frame) -> Result<Vec<u8>, Error> {
-        let mut out = self.build_header(frame)?;
-        out.reserve(frame.nbytes());
-        for &(off, n) in &frame.data {
-            out.extend_from_slice(&self.tiff.buf()[off..off + n]);
-        }
         Ok(out)
     }
 }
