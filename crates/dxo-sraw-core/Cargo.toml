@@ -1,0 +1,13 @@
+[package]
+name = "dxo-sraw-core"
+description = "Parse and split DxO ONE SuperRAW files into per-frame DNGs (no I/O, wasm-friendly)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+thiserror = "2"

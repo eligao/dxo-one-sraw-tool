@@ -1,0 +1,15 @@
+[package]
+name = "dxo-sraw"
+description = "Split DxO ONE SuperRAW (.DXO) files into one DNG per frame"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+dxo-sraw-core = { path = "../dxo-sraw-core" }
+
+[lints]
+workspace = true
