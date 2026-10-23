@@ -72,7 +72,12 @@ export default function App() {
 
   return (
     <main>
-      <h1>DxO ONE SuperRAW splitter</h1>
+      <header>
+        <h1>DxO ONE SuperRAW splitter</h1>
+        <a className="gh" href="https://github.com/eligao/dxo-one-sraw-tool" target="_blank" rel="noreferrer">
+          ☆ GitHub
+        </a>
+      </header>
       <p>
         Splits each SuperRAW <code>.DXO</code> file into its 4 frames as standard DNGs, ready to merge in Lightroom
         (Photo Merge → HDR). Everything runs in your browser; files are never uploaded.
