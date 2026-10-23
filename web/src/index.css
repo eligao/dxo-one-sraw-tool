@@ -6,7 +6,11 @@
   --accent: #7c3aed;
   --error: #c0262d;
   color-scheme: light dark;
-  font: 16px/1.5 system-ui, 'Segoe UI', Roboto, sans-serif;
+  font:
+    16px/1.5 system-ui,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
   color: var(--fg);
   background: var(--bg);
 }

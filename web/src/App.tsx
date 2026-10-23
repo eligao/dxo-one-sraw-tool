@@ -79,8 +79,8 @@ export default function App() {
         </a>
       </header>
       <p>
-        Split DxO ONE SuperRAW <code>.DXO</code> files into
-        4 standard DNGs, ready to merge in Lightroom, darktable, etc.<sup>*</sup>
+        Split DxO ONE SuperRAW <code>.DXO</code> files into 4 standard DNGs, ready to merge in Lightroom, darktable,
+        etc.<sup>*</sup>
       </p>
       <p>Everything runs in your browser; files are never uploaded.</p>
 
@@ -112,8 +112,7 @@ export default function App() {
           <ul className="items">
             {items.map((it) => (
               <li key={it.id}>
-                <strong>{it.name}</strong>{' '}
-                {it.status === 'working' && <span className="muted">splitting…</span>}
+                <strong>{it.name}</strong> {it.status === 'working' && <span className="muted">splitting…</span>}
                 {it.status === 'error' && <span className="error">{it.error}</span>}
                 {it.meta && (
                   <span className="muted">
@@ -146,9 +145,13 @@ export default function App() {
             >
               SuperRAW
             </a>
-            : <q>a DxO proprietary format, particularly suitable for high sensitivity shooting, combining four images in
-            DNG format. It can be post-processed to merge the data contained in these four photos in order to obtain a
-            single photo with less noise than any one of the original four photos</q>, but only with DxO's own software.
+            :{' '}
+            <q>
+              a DxO proprietary format, particularly suitable for high sensitivity shooting, combining four images in
+              DNG format. It can be post-processed to merge the data contained in these four photos in order to obtain a
+              single photo with less noise than any one of the original four photos
+            </q>
+            , but only with DxO's own software.
           </li>
           <li>
             Other raw software may open <code>.DXO</code> files, but only the first frame is read; the remaining 3 are
