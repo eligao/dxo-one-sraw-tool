@@ -59,6 +59,11 @@ h1 {
   border-color: var(--accent);
 }
 
+footer {
+  margin-top: 32px;
+  font-size: 0.875rem;
+}
+
 code {
   font-family: ui-monospace, Consolas, monospace;
 }

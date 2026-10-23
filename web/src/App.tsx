@@ -79,9 +79,10 @@ export default function App() {
         </a>
       </header>
       <p>
-        Splits each SuperRAW <code>.DXO</code> file into its 4 frames as standard DNGs, ready to merge in Lightroom
-        (Photo Merge → HDR). Everything runs in your browser; files are never uploaded.
+        Split DxO ONE SuperRAW <code>.DXO</code> files into
+        4 standard DNGs, ready to merge in Lightroom, darktable, etc.<sup>*</sup>
       </p>
+      <p>Everything runs in your browser; files are never uploaded.</p>
 
       <label
         className={`drop${dragging ? ' over' : ''}`}
@@ -133,6 +134,29 @@ export default function App() {
           </ul>
         </>
       )}
+
+      <footer className="muted">
+        <p>* How it works:</p>
+        <ul>
+          <li>
+            <a
+              href="https://reference-dxoone.dxo.com/en/6-2-file-format-and-managing-raw-files/"
+              target="_blank"
+              rel="noreferrer"
+            >
+              SuperRAW
+            </a>
+            : <q>a DxO proprietary format, particularly suitable for high sensitivity shooting, combining four images in
+            DNG format. It can be post-processed to merge the data contained in these four photos in order to obtain a
+            single photo with less noise than any one of the original four photos</q>, but only with DxO's own software.
+          </li>
+          <li>
+            Other raw software may open <code>.DXO</code> files, but only the first frame is read; the remaining 3 are
+            ignored. Once split, all 4 raw frames can be merged properly, e.g. with Lightroom's Photo Merge → HDR or
+            darktable's “create HDR”.
+          </li>
+        </ul>
+      </footer>
     </main>
   )
 }
